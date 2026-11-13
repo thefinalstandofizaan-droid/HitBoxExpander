@@ -1,0 +1,635 @@
+-- LocalPlayer & State Initialization
+local lp = game.Players.LocalPlayer
+getgenv().ScriptEnabled = false
+getgenv().HasWhirlwindDrop = false
+getgenv().SelectedTargetPlayer = nil
+getgenv().TargetMode = nil -- "Auto" or "Manual"
+
+-- Create Main ScreenGui for Loading & UI
+local ScreenGuiToggle = Instance.new("ScreenGui")
+ScreenGuiToggle.Name = "ScriptControlUI"
+ScreenGuiToggle.ResetOnSpawn = false
+ScreenGuiToggle.Parent = lp:WaitForChild("PlayerGui")
+
+-- ==========================================
+-- LOADING / MODE SELECTION GUI
+-- ==========================================
+local LoadFrame = Instance.new("Frame")
+LoadFrame.Size = UDim2.new(0, 320, 0, 200)
+LoadFrame.Position = UDim2.new(0.5, -160, 0.5, -100)
+LoadFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+LoadFrame.BorderSizePixel = 0
+LoadFrame.Active = true
+LoadFrame.Draggable = true
+LoadFrame.Parent = ScreenGuiToggle
+
+local LoadCorner = Instance.new("UICorner")
+LoadCorner.CornerRadius = UDim.new(0, 12)
+LoadCorner.Parent = LoadFrame
+
+local LoadTitle = Instance.new("TextLabel")
+LoadTitle.Size = UDim2.new(1, 0, 0, 50)
+LoadTitle.BackgroundTransparency = 1
+LoadTitle.Text = "Select Mode"
+LoadTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+LoadTitle.TextSize = 20
+LoadTitle.Font = Enum.Font.GothamBold
+LoadTitle.Parent = LoadFrame
+
+local LoadSub = Instance.new("TextLabel")
+LoadSub.Size = UDim2.new(1, 0, 0, 20)
+LoadSub.Position = UDim2.new(0, 0, 0, 45)
+LoadSub.BackgroundTransparency = 1
+LoadSub.Text = "Choose your targeting behavior below"
+LoadSub.TextColor3 = Color3.fromRGB(150, 150, 160)
+LoadSub.TextSize = 13
+LoadSub.Font = Enum.Font.Gotham
+LoadSub.Parent = LoadFrame
+
+-- Button Creator for Loader
+local function createLoadButton(name, yPos, color)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 260, 0, 40)
+    btn.Position = UDim2.new(0.5, -130, 0, yPos)
+    btn.BackgroundColor3 = color
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 15
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = name
+    btn.Parent = LoadFrame
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = btn
+    return btn
+end
+
+local BtnAuto = createLoadButton("Auto Closest", 80, Color3.fromRGB(40, 120, 220))
+local BtnTargetizor = createLoadButton("Targetizor (Manual)", 135, Color3.fromRGB(120, 40, 220))
+
+-- Forward declarations for runtime UIs
+local ToggleButton, TargetFrame, updatePlayerList
+
+-- ==========================================
+-- RUNTIME UI SETUP (Created after mode selection)
+-- ==========================================
+local function setupRuntimeUI()
+    -- Toggle Button (ON/OFF)
+    ToggleButton = Instance.new("TextButton")
+    ToggleButton.Size = UDim2.new(0, 120, 0, 40)
+    ToggleButton.Position = UDim2.new(0, 10, 0, 10)
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Red (Off)
+    ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleButton.TextSize = 14
+    ToggleButton.Font = Enum.Font.GothamBold
+    ToggleButton.Text = "Status: OFF"
+    ToggleButton.Active = true
+    ToggleButton.Draggable = true
+    ToggleButton.Parent = ScreenGuiToggle
+
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 8)
+    UICorner.Parent = ToggleButton
+
+    -- Target Selector Panel Frame (Only shown if Targetizor mode is selected)
+    if getgenv().TargetMode == "Manual" then
+        TargetFrame = Instance.new("Frame")
+        TargetFrame.Size = UDim2.new(0, 180, 0, 220)
+        TargetFrame.Position = UDim2.new(0, 10, 0, 60)
+        TargetFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+        TargetFrame.BorderSizePixel = 0
+        TargetFrame.Active = true
+        TargetFrame.Draggable = true
+        TargetFrame.Parent = ScreenGuiToggle
+
+        local TargetCorner = Instance.new("UICorner")
+        TargetCorner.CornerRadius = UDim.new(0, 8)
+        TargetCorner.Parent = TargetFrame
+
+        local TargetTitle = Instance.new("TextLabel")
+        TargetTitle.Size = UDim2.new(1, -30, 0, 30)
+        TargetTitle.Position = UDim2.new(0, 10, 0, 0)
+        TargetTitle.BackgroundTransparency = 1
+        TargetTitle.Text = "Select Target"
+        TargetTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TargetTitle.TextSize = 14
+        TargetTitle.TextXAlignment = Enum.TextXAlignment.Left
+        TargetTitle.Font = Enum.Font.GothamBold
+        TargetTitle.Parent = TargetFrame
+
+        -- Minimize Button
+        local MinimizeButton = Instance.new("TextButton")
+        MinimizeButton.Size = UDim2.new(0, 24, 0, 24)
+        MinimizeButton.Position = UDim2.new(1, -28, 0, 3)
+        MinimizeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        MinimizeButton.TextSize = 14
+        MinimizeButton.Font = Enum.Font.GothamBold
+        MinimizeButton.Text = "-"
+        MinimizeButton.Parent = TargetFrame
+
+        local MinCorner = Instance.new("UICorner")
+        MinCorner.CornerRadius = UDim.new(0, 6)
+        MinCorner.Parent = MinimizeButton
+
+        local ScrollingFrame = Instance.new("ScrollingFrame")
+        ScrollingFrame.Size = UDim2.new(1, -10, 1, -40)
+        ScrollingFrame.Position = UDim2.new(0, 5, 0, 35)
+        ScrollingFrame.BackgroundTransparency = 1
+        ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        ScrollingFrame.ScrollBarThickness = 4
+        ScrollingFrame.Parent = TargetFrame
+
+        local UIListLayout = Instance.new("UIListLayout")
+        UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        UIListLayout.Padding = UDim.new(0, 4)
+        UIListLayout.Parent = ScrollingFrame
+
+        -- Minimize Toggle Functionality
+        local isMinimized = false
+        MinimizeButton.MouseButton1Click:Connect(function()
+            isMinimized = not isMinimized
+            if isMinimized then
+                MinimizeButton.Text = "+"
+                ScrollingFrame.Visible = false
+                TargetFrame.Size = UDim2.new(0, 180, 0, 32)
+            else
+                MinimizeButton.Text = "-"
+                ScrollingFrame.Visible = true
+                TargetFrame.Size = UDim2.new(0, 180, 0, 220)
+            end
+        end)
+
+        updatePlayerList = function()
+            for _, child in pairs(ScrollingFrame:GetChildren()) do
+                if child:IsA("TextButton") then
+                    child:Destroy()
+                end
+            end
+
+            for _, player in ipairs(game.Players:GetPlayers()) do
+                if player ~= lp then
+                    local pButton = Instance.new("TextButton")
+                    pButton.Size = UDim2.new(1, 0, 0, 28)
+                    pButton.BackgroundColor3 = (getgenv().SelectedTargetPlayer == player) and Color3.fromRGB(50, 150, 250) or Color3.fromRGB(35, 35, 45)
+                    pButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    pButton.TextSize = 13
+                    pButton.Font = Enum.Font.Gotham
+                    pButton.Text = player.DisplayName .. " (@" .. player.Name .. ")"
+                    pButton.Parent = ScrollingFrame
+
+                    local btnCorner = Instance.new("UICorner")
+                    btnCorner.CornerRadius = UDim.new(0, 6)
+                    btnCorner.Parent = pButton
+
+                    pButton.MouseButton1Click:Connect(function()
+                        if getgenv().SelectedTargetPlayer == player then
+                            getgenv().SelectedTargetPlayer = nil
+                        else
+                            getgenv().SelectedTargetPlayer = player
+                        end
+                        updatePlayerList()
+                    end)
+                end
+            end
+            ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y)
+        end
+
+        game.Players.PlayerAdded:Connect(updatePlayerList)
+        game.Players.PlayerRemoving:Connect(updatePlayerList)
+        updatePlayerList()
+    end
+
+    -- Toggle Button Event
+    ToggleButton.MouseButton1Click:Connect(function()
+        getgenv().ScriptEnabled = not getgenv().ScriptEnabled
+        
+        if getgenv().ScriptEnabled then
+            ToggleButton.Text = "Status: ON"
+            ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+            MainEnv()
+        else
+            ToggleButton.Text = "Status: OFF"
+            ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+            pcall(function()
+                game:GetService("RunService"):UnbindFromRenderStep("UpdateSubject")
+                workspace.CurrentCamera.CameraSubject = lp.Character:FindFirstChildOfClass("Humanoid")
+                workspace.CurrentCamera.CameraType = 'Custom'
+            end)
+        end
+    end)
+end
+
+-- Loader Button Connection Handling
+BtnAuto.MouseButton1Click:Connect(function()
+    getgenv().TargetMode = "Auto"
+    LoadFrame:Destroy()
+    setupRuntimeUI()
+end)
+
+BtnTargetizor.MouseButton1Click:Connect(function()
+    getgenv().TargetMode = "Manual"
+    LoadFrame:Destroy()
+    setupRuntimeUI()
+end)
+
+
+-- ==========================================
+-- CORE SCRIPTS & LOOPS
+-- ==========================================
+
+-- Whirlwind Drop Scanner & Anti-Void Protection Loop
+spawn(function()
+    while task.wait(0.2) do
+        if not getgenv().ScriptEnabled then continue end
+        local found = false
+        local char = lp.Character
+        local backpack = lp.Backpack
+        local playerGui = lp:FindFirstChild("PlayerGui")
+        
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local hrp = char.HumanoidRootPart
+            if hrp.Position.Y < -10 then
+                hrp.CFrame = CFrame.new(148, 441, 27)
+            end
+        end
+        
+        local function checkAndHide(container)
+            if not container then return end
+            for _, v in pairs(container:GetDescendants()) do
+                local nameMatch = v.Name:lower():find("whirlwind drop")
+                local textMatch = (v:IsA("TextLabel") or v:IsA("TextButton")) and v.Text:lower():find("whirlwind drop")
+                
+                if nameMatch or textMatch then
+                    found = true
+                    pcall(function()
+                        if v:IsA("BasePart") then
+                            v.Transparency = 1
+                            v.LocalTransparencyModifier = 1
+                        elseif v:IsA("GuiObject") then
+                            local parent = v.Parent
+                            while parent and parent ~= playerGui do
+                                if parent.Name:lower():find("slot") or parent.Name == "3" then
+                                    parent.Visible = false
+                                    break
+                                end
+                                parent = parent.Parent
+                            end
+                            v.Visible = false
+                        elseif v:IsA("Model") then
+                            for _, part in pairs(v:GetDescendants()) do
+                                if part:IsA("BasePart") then
+                                    part.Transparency = 1
+                                    part.LocalTransparencyModifier = 1
+                                end
+                            end
+                        end
+                    end)
+                end
+            end
+        end
+        
+        checkAndHide(char)
+        checkAndHide(backpack)
+        if playerGui then
+            checkAndHide(playerGui)
+        end
+        
+        getgenv().HasWhirlwindDrop = found
+    end
+end)
+
+function info(txt, dly)
+if not getgenv().ScriptEnabled then return end
+if dly == nil then dly = 2 end
+spawn(function() 
+local ScreenGui2 = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Credits = Instance.new("TextLabel")
+pcall(function() game.CoreGui.Revit:Destroy() end)
+task.wait(.1)
+ScreenGui2.Parent = game.CoreGui
+ScreenGui2.ZIndexBehavior = Enum.ZIndexBehavior.Global
+ScreenGui2.IgnoreGuiInset = true
+ScreenGui2.ResetOnSpawn = false
+ScreenGui2.Name = 'Revit'
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui2
+MainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+MainFrame.BorderColor3 = Color3.fromRGB(255, 0, 0)
+
+spawn(function()
+Credits.Parent = ScreenGui2
+Credits.Font = Enum.Font.Arcade
+Credits.TextColor3 = Color3.new(1,1,1)
+Credits.Position = UDim2.new(0,0,0,0)
+Credits.TextSize = 35
+Credits.Size = UDim2.new(1,0,.1,0)
+Credits.Text = ''
+Credits.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+Credits.BorderColor3 = Color3.fromRGB(255, 0, 0)
+end)
+
+function tw(var, s)
+local a = ""
+local s_l = #s
+for i = 1, s_l do
+if not getgenv().ScriptEnabled then break end
+local c = string.sub(s, i, i)
+a = a .. c
+var.Text = a
+if c == "." then
+task.wait(.6)
+elseif c == ";" then
+task.wait(.3)
+elseif c == "," then
+task.wait(.3)
+elseif c == "!" then
+task.wait(.3)
+end
+task.wait(.03)
+end
+end
+
+tw(Credits, txt)
+task.wait(dly)
+ScreenGui2:Destroy()
+end)
+end
+
+_G.Gay = true
+
+function MainEnv()
+local lp = game.Players.LocalPlayer
+local char = lp.Character
+if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then return end
+local hrp = char.HumanoidRootPart
+local bp = lp.Backpack 
+
+function randomstring()
+    local e = {}
+    for i = 1, math.random(140, 180) do
+        table.insert(e, #e+1, utf8.char(math.random(1111, 1112)))
+    end
+    return table.concat(e)
+end
+
+getgenv().connections = getgenv().connections or {}
+local function DestroySignals()
+    for i, v in pairs(getgenv().connections) do
+        if typeof(v) == "RBXScriptConnection" then
+            v:Disconnect()
+        end
+    end
+    getgenv().connections = {}
+end
+DestroySignals()
+
+local function AddSignal(connection, name)
+local str = randomstring()
+if getgenv().connections then
+getgenv().connections[name..str or #getgenv().connections + 1] = connection
+return connection
+end
+end
+
+spawn(function()
+while task.wait(0.5) do
+if not getgenv().ScriptEnabled then
+    DestroySignals()
+    pcall(function()
+        game:GetService("RunService"):UnbindFromRenderStep("UpdateSubject")
+    end)
+    pcall(function()
+        workspace.CurrentCamera.CameraSubject = char:FindFirstChildOfClass("Humanoid")
+        workspace.CurrentCamera.CameraType = 'Custom'
+    end)
+    break
+end
+end
+end)
+
+getgenv().gay = true 
+task.wait(.4)
+getgenv().gay = false
+
+spawn(function()
+getgenv().ATCH = false 
+getgenv().EN = nil
+spawn(function()
+for i = 1, 99999999999999 do 
+if not getgenv().ScriptEnabled or getgenv().gay == true then break end
+
+-- Targeting Mode Resolver
+if getgenv().TargetMode == "Manual" and getgenv().SelectedTargetPlayer and getgenv().SelectedTargetPlayer.Character then
+    local targetChar = getgenv().SelectedTargetPlayer.Character
+    if targetChar:FindFirstChild("HumanoidRootPart") then
+        getgenv().EN = targetChar.HumanoidRootPart
+    end
+else
+    -- Default / Auto Closest Mode
+    local dist = math.huge
+    for _, part in pairs(workspace.Live:GetChildren()) do
+        if part:IsA("Model") and part:FindFirstChild("HumanoidRootPart") and part ~= char then
+            local otherRoot = part.HumanoidRootPart
+            local distance = (otherRoot.Position - hrp.Position).Magnitude
+            if distance < dist then 
+                dist = distance 
+                getgenv().EN = otherRoot 
+            end 
+        end 
+    end
+end
+
+if getgenv().EN then
+local h = Instance.new('Highlight')
+h.FillTransparency = 1
+h.OutlineColor = Color3.new(1,1,1)
+h.Parent = getgenv().EN.Parent 
+task.wait(.02) 
+h:Destroy() 
+end
+end 
+end)
+
+if getgenv().ATCH == true then 
+getgenv().ATCH = false 
+getgenv().val = char.Head
+workspace.CurrentCamera.CameraSubject = char
+workspace.CurrentCamera.CameraType = 'Custom'
+return 
+end 
+
+task.wait(.3)
+if not getgenv().ScriptEnabled then return end
+getgenv().ATCH = true 
+
+local e = Instance.new('Part')
+_G.P = e 
+local p = Instance.new("Part", char)
+p.Size = Vector3.new(.5,.5,.5)
+p.CanCollide = false
+p.CanTouch = false
+p.Anchored = true
+p.Transparency = 1
+
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local rootPart = hrp
+local camera = workspace.CurrentCamera
+local humanoid = char.Humanoid
+
+local WEIGHT = 15
+local function updateSubject()
+if not getgenv().ScriptEnabled then return end
+if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+local lookXZ = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
+rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + lookXZ)
+end
+camera.CameraSubject = p
+if (camera.CFrame.Position - p.Position).Magnitude < 1 or 
+(camera.CFrame.Position - getgenv().val.Position).Magnitude < 1 then
+camera.CameraSubject = humanoid
+p.Position = getgenv().val.Position
+else
+camera.CameraSubject = p
+game.TweenService:Create(p, TweenInfo.new(2/WEIGHT), {Position = e.Position}):Play()
+end
+end
+
+AddSignal(RunService:BindToRenderStep("UpdateSubject", Enum.RenderPriority.First.Value, updateSubject), "Camera Head")
+getgenv().val = e
+
+AddSignal(game:GetService("RunService").Heartbeat:Connect(function(step)
+if not getgenv().ScriptEnabled or not getgenv().EN or not getgenv().EN.Parent then return end
+local old = hrp.CFrame
+local old2 = char.Head.CFrame
+
+hrp.CFrame = CFrame.new(
+	getgenv().EN.CFrame.X,
+	441-9,
+	getgenv().EN.CFrame.Z
+) * CFrame.Angles(math.rad(90), 0, 0)
+e.CFrame = old2
+
+game:GetService("RunService").RenderStepped:Wait()
+hrp.CFrame = old
+if _G.JMP == true then 
+hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(getgenv().EN.Position.X, getgenv().EN.Position.Y, getgenv().EN.Position.Z))
+else 
+hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(getgenv().EN.Position.X, hrp.Position.Y, getgenv().EN.Position.Z))
+end
+end), 'Auto Aim RS')
+
+repeat task.wait() until not getgenv().ScriptEnabled or getgenv().ATCH == false or char.Humanoid.Health == 0
+e:Destroy()
+pcall(function() p:Destroy() end)
+getgenv().gay = false 
+
+pcall(function()
+    RunService:UnbindFromRenderStep("UpdateSubject")
+end)
+
+workspace.CurrentCamera.CameraSubject = humanoid
+workspace.CurrentCamera.CameraType = 'Custom'
+end)
+
+AddSignal(char.Humanoid.AnimationPlayed:Connect(function(v)
+if not getgenv().ScriptEnabled then return end
+if v.Animation and v.Animation.Name:lower():find("whirlwind drop") then
+    if getgenv().ScriptEnabled then
+        getgenv().ScriptEnabled = false
+        task.delay(3, function()
+            getgenv().ScriptEnabled = true
+            MainEnv()
+        end)
+    end
+end
+
+if v.Animation.AnimationId == "rbxassetid://13370310513" 
+or v.Animation.AnimationId == "rbxassetid://13390230973" 
+or v.Animation.AnimationId == "rbxassetid://13378751717" 
+or v.Animation.AnimationId == "rbxassetid://13378708199" 
+then v:Stop()
+if _G.Jumping == true then 
+_G.JMP = true 
+task.wait(.3)
+_G.JMP = false
+end
+end end), 'M1')
+
+AddSignal(char.Humanoid.AnimationPlayed:Connect(function(v)
+if not getgenv().ScriptEnabled then return end
+if v.Animation.AnimationId == "rbxassetid://13380255751" then 
+v:Stop()
+local lolbv = hrp.ChildAdded:Connect(function(pp)
+if pp:IsA('BodyVelocity') then 
+pp.MaxForce = Vector3.new(0, 0, 0)
+end end)
+
+task.delay(1.5, function()
+lolbv:Disconnect() end)
+
+if _G.Jumping == true then 
+_G.JMP = true 
+local bv = Instance.new('BodyVelocity')
+bv.Parent = hrp
+bv.MaxForce = Vector3.new(0, 9e9, 0)
+bv.Velocity = Vector3.new(0, -1, 0)
+
+task.delay(1, function()
+_G.JMP = false  
+bv:Destroy()
+end)
+end
+end end), 'Front Dash')
+
+AddSignal(char.Humanoid.AnimationPlayed:Connect(function(v)
+if not getgenv().ScriptEnabled then return end
+if v.Animation.AnimationId == "rbxassetid://13376962659" 
+or v.Animation.AnimationId == 'rbxassetid://13362587853' then 
+v:Stop()
+
+local lolbv = hrp.ChildAdded:Connect(function(pp)
+if pp:IsA('BodyVelocity') then 
+pp.MaxForce = Vector3.new(0, 0, 0)
+end end)
+
+task.delay(2.5, function()
+lolbv:Disconnect() end)
+end end), 'Move3')
+
+pcall(function()
+local parts = char:WaitForChild("#NinjaKATANA", 5)
+end)
+
+AddSignal(char.Humanoid.AnimationPlayed:Connect(function(v)
+if not getgenv().ScriptEnabled then return end
+if v.Animation.AnimationId == "rbxassetid://13556985475" then 
+v:Stop()
+end end), 'Move4')
+
+AddSignal(char.Humanoid.AnimationPlayed:Connect(function(v)
+if not getgenv().ScriptEnabled then return end
+if v.Animation.AnimationId == "rbxassetid://13294790250" then 
+v:Stop()
+end end), 'Move2')
+
+AddSignal(char.Humanoid.AnimationPlayed:Connect(function(v)
+if not getgenv().ScriptEnabled then return end
+if v.Animation.AnimationId == "rbxassetid://14516273501" then
+local IdPlaying = true
+v.Stopped:Wait() 
+IdPlaying = false 
+end end), "Idle")
+end 
+
+pcall(function()
+getgenv().pepe:Disconnect()
+end)
+getgenv().pepe = lp.CharacterAdded:Connect(function(c)
+if not getgenv().ScriptEnabled then return end
+repeat task.wait() until c:FindFirstChild('HumanoidRootPart') and c:FindFirstChild('Humanoid')
+task.wait(.2)
+MainEnv()
+end)
